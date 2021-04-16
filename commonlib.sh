@@ -90,6 +90,29 @@ common::trim() (
 
 
 #######################################
+# Append line to a string.
+# Globals:
+#   None
+# Arguments:
+#   Line to append
+#   Text to append to (may be empty)
+# Outputs:
+#   Text with appended line -> stdout
+#######################################
+common::append_line() (
+  line="${1:?[1] Line is not specified}"
+  # May be empty.
+  text="${2}"
+
+  if [ -z "${text}" ]; then
+    printf '%s' "${line}"
+  else
+    printf '%s\n%s' "${text}" "${line}"
+  fi
+)
+
+
+#######################################
 # Check if a word is in a list delimited by spaces.
 # Globals:
 #   None
