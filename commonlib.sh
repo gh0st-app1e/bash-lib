@@ -70,7 +70,7 @@ common::extract() (
   else
     common::print_to_stderr "[!] '${archive}' is not a valid file"
     return 1
-  fi  
+  fi
 )
 
 
