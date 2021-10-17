@@ -1,18 +1,5 @@
 #!/bin/bash
 
-#######################################
-# Write a message to stderr.
-# Globals:
-#   None
-# Arguments:
-#   Message
-# Outputs:
-#   Provided message -> stderr
-#######################################
-bl::script::print_to_stderr() {
-  local -r text_to_print="${1:?[!] The text to print is not specified"
-  printf '%b' "${text_to_print}" >&2
-}
 
 #######################################
 # Ask user a question and expect "yes" or "no" as an answer.
@@ -22,7 +9,8 @@ bl::script::print_to_stderr() {
 # Outputs:
 #   The question -> stdout
 # Returns:
-#   0 if the answer is "yes", 1 if "no".
+#   0 - if the answer is "yes"
+#   1 - if the answer is "no"
 #######################################
 bl::script::ask_yes_no() {
   local -r message="${1}"
@@ -30,7 +18,7 @@ bl::script::ask_yes_no() {
 
   while true; do
     printf "%s %s\n" "${message}" "${choices}"
-    read user_input
+    read -r user_input
     case "${user_input}" in
       "y"|"Y")
         return 0
@@ -44,18 +32,26 @@ bl::script::ask_yes_no() {
   done
 }
 
-
-
-# TODO:
+#######################################
+# Check if running as root.
+# If running as another user, check if sudo is present.
+# If sudo is present, re-run with sudo if user agrees.
+# Returns:
+#   0 - if running as root
+#   2 - if running as another user and was unable to re-run as root
+#   exits with the script's exit code - if was able to re-run as root
+#######################################
 bl::script::root_guard() {
   if [ "$UID" != "0" ]; then
-    printf "[!] This script must be run as root."
     if command -v sudo &>/dev/null; then
-      printf " Trying to re-run with sudo...\n"
-      sudo "$0" "$@"
-      exit
+      bl::script::ask_yes_no "This script must be run as root. Try running with sudo?" ||
+        return 2
+      # This function is expected to be called only from bash scripts, thus calling bash is OK.
+      sudo bash "$0" "$@"
+      exit $?
     else
-      printf " Exiting...\n"
-      exit
+      printf "This script must be run as root.\n"
+      return 2
+    fi
   fi
 }

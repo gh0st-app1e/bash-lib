@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-source ./log.sh
-source ./os.sh
-source ./script.sh
+. ./log.sh
+. ./os.sh
+. ./file.sh
+. ./script.sh
 
