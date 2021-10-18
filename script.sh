@@ -1,4 +1,10 @@
 #!/bin/bash
+#
+# Helper functions for writing scripts.
+#
+# Dependencies:
+#   - log
+#   - os
 
 
 #######################################
@@ -33,25 +39,48 @@ bl::script::ask_yes_no() {
 }
 
 #######################################
-# Check if running as root.
-# If running as another user, check if sudo is present.
-# If sudo is present, re-run with sudo if user agrees.
+# Run a command as root.
+# Uses sudo for elevation.
 # Returns:
-#   0 - if running as root
-#   2 - if running as another user and was unable to re-run as root
+#   The command's exit code - if the command was run
+#   Exits with code 1 - if the command was not run
+#######################################
+bl::script::run_as_root() {
+  local -r command="$1"
+  if [[ -z "${command}" ]]; then
+    bl::log::fatal "No command was provided"
+    exit 1
+  fi
+
+  # su is not used due to difficulties in passing the arguments correctly.
+  if [[ "$(bl::os::euid)" != "0" ]]; then
+    if command -v sudo &>/dev/null; then
+      sudo -- "$@"
+      # sudo returns 1 if there was an error.
+      return $?
+    else
+      bl::log::fatal "sudo is not available"
+      exit 1
+    fi
+  fi
+}
+
+#######################################
+# Check if running as root.
+# If running as another user, elevate and re-run with bl::script::run_as_root().
+# Correct usage is at the beginning of the script before any script arguments are modified.
+# Arguments:
+#   "$@" (script arguments)
+# Returns:
+#   0 - if already running as root
+#   1 - if was unable to re-run as root
 #   exits with the script's exit code - if was able to re-run as root
 #######################################
+# TODO: check for current bash instance's cmdline options and pass them too?
 bl::script::root_guard() {
-  if [ "$UID" != "0" ]; then
-    if command -v sudo &>/dev/null; then
-      bl::script::ask_yes_no "This script must be run as root. Try running with sudo?" ||
-        return 2
-      # This function is expected to be called only from bash scripts, thus calling bash is OK.
-      sudo bash "$0" "$@"
-      exit $?
-    else
-      printf "This script must be run as root.\n"
-      return 2
-    fi
+  if [[ "$(bl::os::euid)" != "0" ]]; then
+    bl::log::warn "Running as a user other than root. Trying to elevate..."
+    bl::script::run_as_root "bash" "$0" "$@"
+    exit $?
   fi
 }

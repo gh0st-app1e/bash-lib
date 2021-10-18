@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+#
+# Functions related to logging.
+#
+# Dependencies: none
+
 export BASH_LIB_LOG_LEVEL=debug
 
 
@@ -68,10 +73,20 @@ bl::log::log() {
   local -r requested_level_num="${log_levels[${requested_level}]}"
 
   if (( "${requested_level_num}" >= "${current_level_num}" )); then
-    # Include name of calling function if possible.
     local -r set_colour="\e[${log_colours[${requested_level}]}m"
-    if [[ -n "${FUNCNAME[1]}" ]]; then
-      printf "%b%-7s %s: %s%b\n" "${set_colour}" "[${requested_level^^}]" "${FUNCNAME[1]}" "${message}" "${reset_colour}" >&"${outfd}"
+
+    # Include name of the caller function if possible.
+    # If the caller function is one of facade functions, look one step further up in the stack.
+    if [[ "${FUNCNAME[1]}" =~ ^bl::log:: ]]; then
+      if bl::log::check_log_level "${FUNCNAME[1]#bl::log::}"; then
+        local -r caller_function="${FUNCNAME[2]}"
+      else
+        local -r caller_function="${FUNCNAME[1]}"
+      fi
+    fi
+
+    if [[ -n "${caller_function}" ]]; then
+      printf "%b%-7s %s: %s%b\n" "${set_colour}" "[${requested_level^^}]" "${caller_function}" "${message}" "${reset_colour}" >&"${outfd}"
     else
       printf "%b%-7s %s%b\n" "${set_colour}" "[${requested_level^^}]" "${message}" "${reset_colour}" >&"${outfd}"
     fi
