@@ -53,15 +53,13 @@ bl::log::log() {
   local -r outfd="${3:-1}"
   local -r current_level="${BASH_LIB_LOG_LEVEL}"
   # Maximum log level name length is 5, plus 2 brackets => max field width is 7.
-  bl::log::check_log_level "${current_level}"
-  if [[ $? != "0" ]]; then
+  if ! bl::log::check_log_level "${current_level}"; then
     printf "%b%-7s %s: %s%b\n" "\e[${log_colours[error]}m" "[ERROR]" "${FUNCNAME[0]}" \
       "BASH_LIB_LOG_LEVEL(=${current_level}) is not a valid log level, should be debug|info|warn|error|fatal" \
       "${reset_colour}"
     return 2
   fi
-  bl::log::check_log_level "${requested_level}"
-  if [[ $? != "0" ]]; then
+  if ! bl::log::check_log_level "${requested_level}"; then
     printf "%b%-7s %s: %s%b\n" "\e[${log_colours[error]}m" "[ERROR]" "${FUNCNAME[0]}" \
       "Requested log level(=${requested_level}) is not a valid log level, should be debug|info|warn|error|fatal" \
       "${reset_colour}"

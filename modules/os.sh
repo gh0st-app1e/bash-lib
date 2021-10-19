@@ -154,7 +154,7 @@ bl::os::get_primary_gid_by_username() {
 #   -G <value> - primary GID (optional)
 #   -H         - do not create home directory (optional)
 # Returns:
-#   0 - if the user exists
+#   0 - if the user was created or already exists with matching information
 #   non-zero - otherwise
 #######################################
 # TODO: check args
@@ -210,14 +210,14 @@ bl::os::create_nologin_user() {
   # Check if the user already exists.
   # If the user exists, check if all provided information matches his.
   if bl::os::user_exists "${username}"; then
-    local -r existing_user_uid="$(bl::os::get_uid_by_username ${username})"
-    local -r existing_user_gid="$(bl::os::get_primary_gid_by_username ${username})"
-    local -r existing_user_groupname="$(bl::os::get_group_name_by_gid ${existing_user_gid})"
+    local -r existing_user_uid="$(bl::os::get_uid_by_username "${username}")"
+    local -r existing_user_gid="$(bl::os::get_primary_gid_by_username "${username}")"
+    local -r existing_user_groupname="$(bl::os::get_group_name_by_gid "${existing_user_gid}")"
     if [[ ( -n "${uid}" && "${uid}" != "${existing_user_uid}" ) || \
           ( -n "${gid}" && "${gid}" != "${existing_user_gid}" ) || \
           ( -n "${groupname}" && "${groupname}" != "${existing_user_groupname}" ) ]]; then
       # There is a mismatch between provided info and existing user's.
-      bl::log::error "User already exists with different uid/gid/groupname"
+      bl::log::error "A user already exists with different uid/gid/groupname"
       return 1
     else
       # Info matches.
@@ -236,11 +236,55 @@ bl::os::create_nologin_user() {
   if [[ -n "${gid}" || -n "${groupname}" ]]; then
     if [[ -n "${gid}" ]]; then
       adduser_args+=" --ingroup ${gid}"
-    elif [[ -n "groupname" ]]; then
+    elif [[ -n "${groupname}" ]]; then
       adduser_args+=" --ingroup ${groupname}"
     fi
   fi
   adduser_args+=" ${username}"
 
   bl::script::run_as_root "adduser" ${adduser_args}
+}
+
+#######################################
+# Create a group.
+# Do nothing if a group with matching information already exists.
+# Arguments:
+#   Group name
+#   GID (optional)
+# Returns:
+#   0 - if the group was created or already exists with matching information
+#   non-zero - otherwise
+#######################################
+# TODO: check args
+# TODO: create a workaround if addgroup is not present.
+bl::os::create_group() {
+  # Parse and check arguments.
+  local -r group_name="$1"
+  local -r gid="$2"
+
+  if [[ -z "${group_name}" ]]; then
+    bl::log::error "Group name was not provided"
+    return 2
+  fi
+
+  # Check if the group already exists.
+  # If the group exists, check if all provided information matches its.
+  if bl::os::group_exists "${group_name}"; then
+    local -r existing_group_gid="$(bl::os::get_gid_by_group_name "${group_name}")"
+    if [[ -n "${gid}" && "${gid}" != "${existing_group_gid}" ]]; then
+      bl::log::error "A group already exists with different gid/name"
+      return 1
+    else
+      return 0
+    fi
+  fi
+
+  # Do the job.
+  local addgroup_args
+  if [[ -n "${gid}" ]]; then
+    addgroup_args+=" --gid ${gid}"
+  fi
+  addgroup_args+=" ${group_name}"
+
+  bl::script::run_as_root "addgroup" ${adduser_args}
 }
