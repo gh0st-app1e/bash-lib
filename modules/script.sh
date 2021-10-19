@@ -23,7 +23,7 @@ bl::script::ask_yes_no() {
   local -r choices="(y/N)"
 
   while true; do
-    printf "%s %s\n" "${message}" "${choices}"
+    printf "%s %s " "${message}" "${choices}"
     read -r user_input
     case "${user_input}" in
       "y"|"Y")
