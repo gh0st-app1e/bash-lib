@@ -207,6 +207,7 @@ bl::os::create_nologin_user() {
     return 2
   fi
 
+  # BUG: does not check if UID exists at the top-level if.
   # Check if the user already exists.
   # If the user exists, check if all provided information matches his.
   if bl::os::user_exists "${username}"; then
@@ -267,6 +268,7 @@ bl::os::create_group() {
     return 2
   fi
 
+  # BUG: does not check if GID exists at the top-level if.
   # Check if the group already exists.
   # If the group exists, check if all provided information matches its.
   if bl::os::group_exists "${group_name}"; then
@@ -286,5 +288,5 @@ bl::os::create_group() {
   fi
   addgroup_args+=" ${group_name}"
 
-  bl::script::run_as_root "addgroup" ${adduser_args}
+  bl::script::run_as_root "addgroup" ${addgroup_args}
 }
