@@ -14,11 +14,33 @@ export BASH_LIB_LOG_LEVEL=info
 # Returns:
 #   0 if the value is a valid log level, non-zero otherwise.
 #######################################
-bl::log::check_log_level() {
+bl::log::check_level() {
   local -r level="${1}"
+
   if [[ "${level}" =~ ^debug$|^info$|^warn$|^error$|^fatal$ ]]; then
     return 0
   else
+    return 1
+  fi
+}
+
+#######################################
+# Set log level to the provided value.
+# Globals:
+#   BASH_LIB_LOG_LEVEL: wo
+# Arguments:
+#   Log level (debug|info|warn|error|fatal)
+# Returns:
+#   0 if successful, non-zero otherwise.
+#######################################
+bl::log::set_level() {
+  local -r level="${1}"
+
+  if bl::log::check_level "${level}"; then
+    BASH_LIB_LOG_LEVEL="${level}"
+    return 0
+  else
+    bl::log::error "\"${level}\" is not a valid log level"
     return 1
   fi
 }
@@ -42,31 +64,30 @@ bl::log::check_log_level() {
 # TODO: check empty arguments, check fd
 # TODO: set default fd for the log globally
 bl::log::log() {
-  # Color codes: reset;foreground;background.
-  declare -A log_colours=( [debug]="0;90;49" [info]="0;39;49" [warn]="0;33;49" [error]="1;31;49" [fatal]="1;37;41" )
-  declare -A log_levels=( [debug]=1 [info]=2 [warn]=3 [error]=4 [fatal]=5 )
-  local -r reset_colour="\e[0m"
-
-  ### Get and check args.
   local -r requested_level="${1}"
   local -r message="${2}"
   local -r outfd="${3:-1}"
   local -r current_level="${BASH_LIB_LOG_LEVEL}"
+
+  # Colour codes: reset;foreground;background.
+  declare -A log_colours=( [debug]="0;90;49" [info]="0;39;49" [warn]="0;33;49" [error]="1;31;49" [fatal]="1;37;41" )
+  declare -A log_levels=( [debug]=1 [info]=2 [warn]=3 [error]=4 [fatal]=5 )
+  local -r reset_colour="\e[0m"
+
   # Maximum log level name length is 5, plus 2 brackets => max field width is 7.
-  if ! bl::log::check_log_level "${current_level}"; then
+  if ! bl::log::check_level "${current_level}"; then
     printf "%b%-7s %s: %s%b\n" "\e[${log_colours[error]}m" "[ERROR]" "${FUNCNAME[0]}" \
-      "BASH_LIB_LOG_LEVEL(=${current_level}) is not a valid log level, should be debug|info|warn|error|fatal" \
+      "BASH_LIB_LOG_LEVEL(=${current_level}) is not a valid log level" \
       "${reset_colour}"
     return 2
   fi
-  if ! bl::log::check_log_level "${requested_level}"; then
+  if ! bl::log::check_level "${requested_level}"; then
     printf "%b%-7s %s: %s%b\n" "\e[${log_colours[error]}m" "[ERROR]" "${FUNCNAME[0]}" \
-      "Requested log level(=${requested_level}) is not a valid log level, should be debug|info|warn|error|fatal" \
+      "Requested log level(=${requested_level}) is not a valid log level" \
       "${reset_colour}"
     return 2
   fi
 
-  ### Do the job.
   local -r current_level_num="${log_levels[${BASH_LIB_LOG_LEVEL}]}"
   local -r requested_level_num="${log_levels[${requested_level}]}"
 
@@ -76,7 +97,7 @@ bl::log::log() {
     # Include name of the caller function if possible.
     # If the caller function is one of facade functions, look one step further up in the stack.
     if [[ "${FUNCNAME[1]}" =~ ^bl::log:: ]]; then
-      if bl::log::check_log_level "${FUNCNAME[1]#bl::log::}"; then
+      if bl::log::check_level "${FUNCNAME[1]#bl::log::}"; then
         local -r caller_function="${FUNCNAME[2]}"
       else
         local -r caller_function="${FUNCNAME[1]}"
