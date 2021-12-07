@@ -2,6 +2,9 @@
 #
 # Docker helper functions.
 #
+# Dependencies:
+#   - log
+#
 
 
 #######################################
@@ -52,17 +55,22 @@ bl::docker::network::id_to_name() {
 #######################################
 # Connect network(s) to container(s) by name or by labels.
 # Arguments:
-#   --net-name=...        - Network name
-#   --net-label=...       - Network label (ignored if --net-name was provided)
-#   --container-name=...  - Container name
-#   --container-label=... - Container label (ignored if --container-name was provided)
+#   --net-id=...          - Network ID
+#   --net-name=...        - Network name (ignored if --net-id was provided)
+#   --net-label=...       - Network label (ignored if other --net-* option was provided)
+#   --container-id=...    - Container ID
+#   --container-name=...  - Container name (ignored if --container-id was provided)
+#   --container-label=... - Container label (ignored if other --container-* option was provided)
 # Returns:
-#   0
+#   0 - on success
+#   non-zero - otherwise
 #######################################
 bl::docker::network::connect() {
-  local network
+  local network_id
+  local network_name
   local network_label
-  local container
+  local container_id
+  local container_name
   local container_label
 
   local OPTIND=1
@@ -71,17 +79,25 @@ bl::docker::network::connect() {
     case "${optchar}" in
       "-")
         case "${OPTARG}" in
-          net=*)
+          net-id=*)
             local value=${OPTARG#*=}
-            network="${value}"
+            network_id="${value}"
+            ;;
+          net-name=*)
+            local value=${OPTARG#*=}
+            network_name="${value}"
             ;;
           net-label=*)
             local value=${OPTARG#*=}
             network_label="${value}"
             ;;
-          container=*)
+          container-id=*)
             local value=${OPTARG#*=}
-            container="${value}"
+            container_id="${value}"
+            ;;
+          container-name=*)
+            local value=${OPTARG#*=}
+            container_name="${value}"
             ;;
           container-label=*)
             local value=${OPTARG#*=}
@@ -104,28 +120,33 @@ bl::docker::network::connect() {
     esac
   done
 
-  declare -r network
+  declare -r network_id
+  declare -r network_name
   declare -r network_label
-  declare -r container
+  declare -r container_id
+  declare -r container_name
   declare -r container_label
 
-  if [[ -z "${network}" && -z "${network_label}" ]]; then
-    bl::log::error "Neither --net nor --net-label was provided"
+  if [[ -z "${network_id}" && -z "${network_name}" && -z "${network_label}" ]]; then
+    bl::log::error "Network spec (--net-id/--net-name/--net-label) was not provided"
     return 2
   fi
-  if [[ -z "${container}" && -z "${container_label}" ]]; then
-    bl::log::error "Neither --container nor --container-label was provided"
+  if [[ -z "${container_id}" && -z "${container_name}" && -z "${container_label}" ]]; then
+    bl::log::error "Container spec (--container-id/--container-name/--container-label) was not provided"
     return 2
   fi
 
 
   # Networks that will be connected to the containers.
+  # Store only IDs for consistency between use cases.
   declare -a networks_to_connect
-  if [[ -n "${network}" ]]; then
-    networks_to_connect=("${network}")
+  if [[ -n "${network_id}" ]]; then
+    networks_to_connect=("${network_id}")
+  elif [[ -n "${network_name}" ]]; then
+    readarray -t networks_to_connect < <(docker network ls -q --filter name="${network_name}")
   elif [[ -n "${network_label}" ]]; then
     bl::log::debug "Searching networks with label ${network_label}..."
-    readarray -t networks_to_connect < <(docker network ls -q --filter "label=${network_label}")
+    readarray -t networks_to_connect < <(docker network ls -q --filter label="${network_label}")
   fi
   declare -r networks_to_connect
   if [[ ${#networks_to_connect[@]} -eq 0 ]]; then
@@ -134,9 +155,12 @@ bl::docker::network::connect() {
   fi
 
   # Containers to connect the networks to.
+  # Store only IDs for consistency between use cases.
   declare -a target_containers
-  if [[ -n "${container}" ]]; then
-    target_containers=("${container}")
+  if [[ -n "${container_id}" ]]; then
+    target_containers=("${container_id}")
+  elif [[ -n "${container_name}" ]]; then
+    readarray -t target_containers < <(docker container ls -q --filter "names=${container_name}")
   elif [[ -n "${container_label}" ]]; then
     bl::log::debug "Searching containers with label ${container_label}..."
     readarray -t target_containers < <(docker container ls -q --filter "label=${container_label}")
