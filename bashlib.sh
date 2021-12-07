@@ -3,7 +3,7 @@
 
 # Wrapping init in a function to avoid accidental messing with environment.
 bl::init::main() {
-  local -r bash_lib_modules="log file os script docker"
+  local -r bash_lib_modules="log os file string script docker"
 
   # Relative.
   local -r bash_lib_dir="$(dirname "${BASH_SOURCE[0]}")"
