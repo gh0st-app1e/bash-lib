@@ -109,30 +109,43 @@ bl::docker::network::connect() {
   declare -r container
   declare -r container_label
 
+  if [[ -z "${network}" && -z "${network_label}" ]]; then
+    bl::log::error "Neither --net nor --net-label was provided"
+    return 2
+  fi
+  if [[ -z "${container}" && -z "${container_label}" ]]; then
+    bl::log::error "Neither --container nor --container-label was provided"
+    return 2
+  fi
+
 
   # Networks that will be connected to the containers.
-  local networks_to_connect
+  declare -a networks_to_connect
   if [[ -n "${network}" ]]; then
     networks_to_connect=("${network}")
   elif [[ -n "${network_label}" ]]; then
+    bl::log::debug "Searching networks with label ${network_label}..."
     readarray -t networks_to_connect < <(docker network ls -q --filter "label=${network_label}")
-  else
-    bl::log::error "No networks were provided"
-    return 2
   fi
   declare -r networks_to_connect
+  if [[ ${#networks_to_connect[@]} -eq 0 ]]; then
+    bl::log::error "No suitable networks were found"
+    return 1
+  fi
 
   # Containers to connect the networks to.
-  local target_containers
+  declare -a target_containers
   if [[ -n "${container}" ]]; then
     target_containers=("${container}")
   elif [[ -n "${container_label}" ]]; then
+    bl::log::debug "Searching containers with label ${container_label}..."
     readarray -t target_containers < <(docker container ls -q --filter "label=${container_label}")
-  else
-    bl::log::error "No containers were provided"
-    return 2
   fi
   declare -r target_containers
+  if [[ ${#target_containers[@]} -eq 0 ]]; then
+    bl::log::error "No target containers were found"
+    return 1
+  fi
 
   for network_to_connect in "${networks_to_connect[@]}"; do
     for target_container in ${target_containers}; do
