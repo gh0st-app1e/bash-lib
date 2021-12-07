@@ -54,6 +54,7 @@ bl::docker::network::id_to_name() {
 
 #######################################
 # Connect network(s) to container(s) by name or by labels.
+# Does not work with Docker Swarm.
 # Arguments:
 #   --net-id=...          - Network ID
 #   --net-name=...        - Network name (ignored if --net-id was provided)
@@ -65,6 +66,9 @@ bl::docker::network::id_to_name() {
 #   0 - on success
 #   non-zero - otherwise
 #######################################
+# TODO: Add 1 argument to specify if the mode is docker/swarm
+# and treat --target-name (ex. --container-name) accordingly
+# to find services instead of containers and connect to them.
 bl::docker::network::connect() {
   local network_id
   local network_name
@@ -172,7 +176,7 @@ bl::docker::network::connect() {
   fi
 
   for network_to_connect in "${networks_to_connect[@]}"; do
-    for target_container in ${target_containers}; do
+    for target_container in "${target_containers[@]}"; do
       bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network_to_connect}")\" to \"$(bl::docker::container::id_to_names "${target_container}")\"..."
       docker network connect "${network_to_connect}" "${target_container}"
     done
