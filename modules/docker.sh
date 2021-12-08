@@ -14,12 +14,12 @@
 # Outputs:
 #   Names -> stdout
 # Returns:
-#   0
+#   ?
 #######################################
 bl::docker::container::id_to_names() {
   local -r id="$1"
   
-  docker container ls --filter id="$id" --format '{{.Names}}'
+  docker container ls --filter id="${id}" --format '{{.Names}}'
 }
 
 #######################################
@@ -29,12 +29,27 @@ bl::docker::container::id_to_names() {
 # Outputs:
 #   Container IDs -> stdout
 # Returns:
-#   0
+#   ?
 #######################################
-bl::docker::container::get_by_label() {
+bl::docker::container::get_ids_by_label() {
   local -r label="$1"
 
   docker ps -q --filter label="${label}"
+}
+
+#######################################
+# Resolve service's ID to its name.
+# Arguments:
+#   Service ID
+# Outputs:
+#   Name -> stdout
+# Returns:
+#   ?
+#######################################
+bl::docker::service::id_to_name() {
+  local -r id="$1"
+  
+  docker service ls --filter id="${id}" --format '{{.Name}}'
 }
 
 #######################################
@@ -42,7 +57,7 @@ bl::docker::container::get_by_label() {
 # Arguments:
 #   Container ID
 # Outputs:
-#   Names -> stdout
+#   Name -> stdout
 # Returns:
 #   0
 #######################################
@@ -53,36 +68,39 @@ bl::docker::network::id_to_name() {
 }
 
 #######################################
-# Connect network(s) to container(s) by name or by labels.
-# Does not work with Docker Swarm.
+# Connect network(s) to target(s) by name or by labels.
+# Target is a container or a service, depending on mode.
 # Arguments:
-#   --net-id=...          - Network ID
-#   --net-name=...        - Network name (ignored if --net-id was provided)
-#   --net-label=...       - Network label (ignored if other --net-* option was provided)
-#   --container-id=...    - Container ID
-#   --container-name=...  - Container name (ignored if --container-id was provided)
-#   --container-label=... - Container label (ignored if other --container-* option was provided)
+#   --mode=...          - Mode (compose/swarm)
+#   --net-id=...        - Network ID
+#   --net-name=...      - Network name (ignored if --net-id was provided)
+#   --net-label=...     - Network label (ignored if other --net-* option was provided)
+#   --target-id=...     - Target ID
+#   --target-name=...   - Target name (ignored if --target-id was provided)
+#   --target-label=...  - Target label (ignored if other --target-* option was provided)
 # Returns:
 #   0 - on success
 #   non-zero - otherwise
 #######################################
-# TODO: Add 1 argument to specify if the mode is docker/swarm
-# and treat --target-name (ex. --container-name) accordingly
-# to find services instead of containers and connect to them.
 bl::docker::network::connect() {
+  local mode="compose"
   local network_id
   local network_name
   local network_label
-  local container_id
-  local container_name
-  local container_label
+  local target_id
+  local target_name
+  local target_label
 
   local OPTIND=1
   local optspec=":-:"
   while getopts "${optspec}" optchar; do
     case "${optchar}" in
-      "-")
+      -)
         case "${OPTARG}" in
+          mode=*)
+            local value=${OPTARG#*=}
+            mode="${value}"
+            ;;
           net-id=*)
             local value=${OPTARG#*=}
             network_id="${value}"
@@ -95,17 +113,17 @@ bl::docker::network::connect() {
             local value=${OPTARG#*=}
             network_label="${value}"
             ;;
-          container-id=*)
+          target-id=*)
             local value=${OPTARG#*=}
-            container_id="${value}"
+            target_id="${value}"
             ;;
-          container-name=*)
+          target-name=*)
             local value=${OPTARG#*=}
-            container_name="${value}"
+            target_name="${value}"
             ;;
-          container-label=*)
+          target-label=*)
             local value=${OPTARG#*=}
-            container_label="${value}"
+            target_label="${value}"
             ;;
           *)
             bl::log::error "Unknown option: --${OPTARG}"
@@ -124,61 +142,83 @@ bl::docker::network::connect() {
     esac
   done
 
+  declare -r mode
   declare -r network_id
   declare -r network_name
   declare -r network_label
-  declare -r container_id
-  declare -r container_name
-  declare -r container_label
+  declare -r target_id
+  declare -r target_name
+  declare -r target_label
 
+  case "${mode}" in
+    compose|swarm)
+      ;;
+    *)
+      bl::log::error "Bad mode \"${mode}\" - should be \"compose\" or \"swarm\""
+      ;;
+  esac
   if [[ -z "${network_id}" && -z "${network_name}" && -z "${network_label}" ]]; then
     bl::log::error "Network spec (--net-id/--net-name/--net-label) was not provided"
     return 2
   fi
-  if [[ -z "${container_id}" && -z "${container_name}" && -z "${container_label}" ]]; then
+  if [[ -z "${target_id}" && -z "${target_name}" && -z "${target_label}" ]]; then
     bl::log::error "Container spec (--container-id/--container-name/--container-label) was not provided"
     return 2
   fi
 
 
-  # Networks that will be connected to the containers.
+  # Networks that will be connected to the targets.
   # Store only IDs for consistency between use cases.
-  declare -a networks_to_connect
+  declare -a networks
   if [[ -n "${network_id}" ]]; then
-    networks_to_connect=("${network_id}")
+    networks=("${network_id}")
   elif [[ -n "${network_name}" ]]; then
-    readarray -t networks_to_connect < <(docker network ls -q --filter name="${network_name}")
+    readarray -t networks < <(docker network ls -q --filter name="${network_name}")
   elif [[ -n "${network_label}" ]]; then
     bl::log::debug "Searching networks with label ${network_label}..."
-    readarray -t networks_to_connect < <(docker network ls -q --filter label="${network_label}")
+    readarray -t networks < <(docker network ls -q --filter label="${network_label}")
   fi
-  declare -r networks_to_connect
-  if [[ ${#networks_to_connect[@]} -eq 0 ]]; then
+  declare -r networks
+  if [[ ${#networks[@]} -eq 0 ]]; then
     bl::log::error "No suitable networks were found"
     return 1
   fi
 
-  # Containers to connect the networks to.
+  # Targets to connect the networks to.
   # Store only IDs for consistency between use cases.
-  declare -a target_containers
-  if [[ -n "${container_id}" ]]; then
-    target_containers=("${container_id}")
-  elif [[ -n "${container_name}" ]]; then
-    readarray -t target_containers < <(docker container ls -q --filter "names=${container_name}")
-  elif [[ -n "${container_label}" ]]; then
-    bl::log::debug "Searching containers with label ${container_label}..."
-    readarray -t target_containers < <(docker container ls -q --filter "label=${container_label}")
+  declare -a targets
+  if [[ -n "${target_id}" ]]; then
+      targets=("${target_id}")
+  elif [[ "${mode}" == compose ]]; then
+    if [[ -n "${target_name}" ]]; then
+      readarray -t targets < <(docker container ls -q --filter "names=${target_name}")
+    elif [[ -n "${target_label}" ]]; then
+      bl::log::debug "Searching containers with label ${target_label}..."
+      readarray -t targets < <(docker container ls -q --filter "label=${target_label}")
+    fi
+  elif [[ "${mode}" == swarm ]]; then
+    if [[ -n "${target_name}" ]]; then
+      readarray -t targets < <(docker service ls -q --filter "name=${target_name}")
+    elif [[ -n "${target_label}" ]]; then
+      bl::log::debug "Searching services with label ${target_label}..."
+      readarray -t targets < <(docker service ls -q --filter "label=${target_label}")
+    fi
   fi
-  declare -r target_containers
-  if [[ ${#target_containers[@]} -eq 0 ]]; then
-    bl::log::error "No target containers were found"
+  declare -r targets
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    bl::log::error "No targets were found"
     return 1
   fi
 
-  for network_to_connect in "${networks_to_connect[@]}"; do
-    for target_container in "${target_containers[@]}"; do
-      bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network_to_connect}")\" to \"$(bl::docker::container::id_to_names "${target_container}")\"..."
-      docker network connect "${network_to_connect}" "${target_container}"
+  for network in "${networks[@]}"; do
+    for target in "${targets[@]}"; do
+      if [[ "${mode}" == compose ]]; then
+        bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to container \"$(bl::docker::container::id_to_names "${target}")\"..."
+        docker network connect "${network}" "${target}"
+      elif [[ "${mode}" == swarm ]]; then
+        bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to service \"$(bl::docker::service::id_to_name "${target}")\"..."
+        docker service update --network-add "${network}" "${target}"
+      fi
     done
   done
 }
