@@ -82,8 +82,11 @@ bl::docker::network::id_to_name() {
 #   0 - on success
 #   non-zero - otherwise
 #######################################
-bl::docker::network::connect() {
-  local mode="compose"
+bl::docker::network() {
+  local cmd="$1"
+  shift
+
+  local mode
   local network_id
   local network_name
   local network_label
@@ -142,6 +145,7 @@ bl::docker::network::connect() {
     esac
   done
 
+  declare -r cmd
   declare -r mode
   declare -r network_id
   declare -r network_name
@@ -150,6 +154,14 @@ bl::docker::network::connect() {
   declare -r target_name
   declare -r target_label
 
+  case "${cmd}" in
+    connect|disconnect)
+      ;;
+    *)
+      bl::log::error "Bad command \"${cmd}\" - should be \"connect\" or \"disconnect\""
+      ;;
+  esac
+
   case "${mode}" in
     compose|swarm)
       ;;
@@ -157,10 +169,12 @@ bl::docker::network::connect() {
       bl::log::error "Bad mode \"${mode}\" - should be \"compose\" or \"swarm\""
       ;;
   esac
+  
   if [[ -z "${network_id}" && -z "${network_name}" && -z "${network_label}" ]]; then
     bl::log::error "Network spec (--net-id/--net-name/--net-label) was not provided"
     return 2
   fi
+  
   if [[ -z "${target_id}" && -z "${target_name}" && -z "${target_label}" ]]; then
     bl::log::error "Container spec (--container-id/--container-name/--container-label) was not provided"
     return 2
@@ -213,11 +227,21 @@ bl::docker::network::connect() {
   for network in "${networks[@]}"; do
     for target in "${targets[@]}"; do
       if [[ "${mode}" == compose ]]; then
-        bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to container \"$(bl::docker::container::id_to_names "${target}")\"..."
-        docker network connect "${network}" "${target}"
+        if [[ "${cmd}" == connect ]]; then
+          bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to container \"$(bl::docker::container::id_to_names "${target}")\"..."
+          docker network connect "${network}" "${target}"
+        elif [[ "${cmd}" == disconnect ]]; then
+          bl::log::debug "Disconnecting network \"$(bl::docker::network::id_to_name "${network}")\" from container \"$(bl::docker::container::id_to_names "${target}")\"..."
+          docker network disconnect "${network}" "${target}"
+        fi
       elif [[ "${mode}" == swarm ]]; then
-        bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to service \"$(bl::docker::service::id_to_name "${target}")\"..."
-        docker service update --network-add "${network}" "${target}"
+        if [[ "${cmd}" == connect ]]; then
+          bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to service \"$(bl::docker::service::id_to_name "${target}")\"..."
+          docker service update --network-add "${network}" "${target}"
+        elif [[ "${cmd}" == disconnect ]]; then
+          bl::log::debug "Disconnecting network \"$(bl::docker::network::id_to_name "${network}")\" from service \"$(bl::docker::service::id_to_name "${target}")\"..."
+          docker service update --network-rm "${network}" "${target}"
+        fi
       fi
     done
   done
