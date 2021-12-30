@@ -68,8 +68,8 @@ bl::docker::network::id_to_name() {
 }
 
 #######################################
-# Connect network(s) to target(s) by name or by labels.
-# Target is a container or a service, depending on mode.
+# Connect/disconnect network(s) to/from target(s) by name or by labels.
+# Target is a container or a service, depending on the mode of operation (compose/swarm).
 # Arguments:
 #   --mode=...          - Mode (compose/swarm)
 #   --net-id=...        - Network ID
@@ -203,14 +203,14 @@ bl::docker::network() {
   declare -a targets
   if [[ -n "${target_id}" ]]; then
       targets=("${target_id}")
-  elif [[ "${mode}" == compose ]]; then
+  elif [[ "${mode}" == "compose" ]]; then
     if [[ -n "${target_name}" ]]; then
       readarray -t targets < <(docker container ls -q --filter "names=${target_name}")
     elif [[ -n "${target_label}" ]]; then
       bl::log::debug "Searching containers with label ${target_label}..."
       readarray -t targets < <(docker container ls -q --filter "label=${target_label}")
     fi
-  elif [[ "${mode}" == swarm ]]; then
+  elif [[ "${mode}" == "swarm" ]]; then
     if [[ -n "${target_name}" ]]; then
       readarray -t targets < <(docker service ls -q --filter "name=${target_name}")
     elif [[ -n "${target_label}" ]]; then
@@ -220,25 +220,32 @@ bl::docker::network() {
   fi
   declare -r targets
   if [[ ${#targets[@]} -eq 0 ]]; then
-    bl::log::error "No targets were found"
-    return 1
+    case "${cmd}" in
+      "connect")
+        bl::log::error "No targets were found"
+        return 1
+        ;;
+      "disconnect")
+        return 0
+        ;;
+    esac
   fi
 
   for network in "${networks[@]}"; do
     for target in "${targets[@]}"; do
-      if [[ "${mode}" == compose ]]; then
-        if [[ "${cmd}" == connect ]]; then
+      if [[ "${mode}" == "compose" ]]; then
+        if [[ "${cmd}" == "connect" ]]; then
           bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to container \"$(bl::docker::container::id_to_names "${target}")\"..."
           docker network connect "${network}" "${target}"
-        elif [[ "${cmd}" == disconnect ]]; then
+        elif [[ "${cmd}" == "disconnect" ]]; then
           bl::log::debug "Disconnecting network \"$(bl::docker::network::id_to_name "${network}")\" from container \"$(bl::docker::container::id_to_names "${target}")\"..."
           docker network disconnect "${network}" "${target}"
         fi
-      elif [[ "${mode}" == swarm ]]; then
-        if [[ "${cmd}" == connect ]]; then
+      elif [[ "${mode}" == "swarm" ]]; then
+        if [[ "${cmd}" == "connect" ]]; then
           bl::log::debug "Connecting network \"$(bl::docker::network::id_to_name "${network}")\" to service \"$(bl::docker::service::id_to_name "${target}")\"..."
           docker service update --network-add "${network}" "${target}"
-        elif [[ "${cmd}" == disconnect ]]; then
+        elif [[ "${cmd}" == "disconnect" ]]; then
           bl::log::debug "Disconnecting network \"$(bl::docker::network::id_to_name "${network}")\" from service \"$(bl::docker::service::id_to_name "${target}")\"..."
           docker service update --network-rm "${network}" "${target}"
         fi
