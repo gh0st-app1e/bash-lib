@@ -220,15 +220,8 @@ bl::docker::network() {
   fi
   declare -r targets
   if [[ ${#targets[@]} -eq 0 ]]; then
-    case "${cmd}" in
-      "connect")
-        bl::log::error "No targets were found"
-        return 1
-        ;;
-      "disconnect")
-        return 0
-        ;;
-    esac
+    bl::log::warn "No targets were found"
+    return 0
   fi
 
   for network in "${networks[@]}"; do
